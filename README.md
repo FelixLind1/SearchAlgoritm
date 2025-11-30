@@ -1,13 +1,11 @@
+# search-algoritm
 
----
+![npm version](https://img.shields.io/npm/v/search-algoritm.svg)
+![npm downloads](https://img.shields.io/npm/dm/search-algoritm.svg)
+![license](https://img.shields.io/npm/l/search-algoritm.svg?cacheBust=1)
+[![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-blue?logo=github)](https://github.com/FelixLind1/SearchAlgoritm)
 
-# SearchAlgoritm
-
-![npm version](https://img.shields.io/npm/v/SearchAlgoritm.svg)
-![npm downloads](https://img.shields.io/npm/dm/SearchAlgoritm.svg)
-![license](https://img.shields.io/npm/l/SearchAlgoritm.svg?cacheBust=1)
-
-A simple Node.js library for **fuzzy searching** through arrays of objects.
+A simple Node.js library for **fuzzy searching** through arrays of objects.  
 It calculates relevance scores based on how well the query matches the `title` and `description` of each item.
 
 ---
@@ -15,53 +13,159 @@ It calculates relevance scores based on how well the query matches the `title` a
 ## Installation
 
 ```bash
-npm install SearchAlgoritm
+npm install search-algoritm
 ```
 
 ---
 
-## Node.js Usage
+## Node.js Usage (Server-side) — In-Built Data
 
 ```js
-const { searchAlgoritm } = require('SearchAlgoritm');
+const express = require('express');
+const path = require('path');
+const { searchAlgoritm } = require('search-algoritm');
 
-// Example data
-const dataList = [
+const app = express();
+const PORT = 3000;
+
+// Serve static files
+const staticPath = path.join(__dirname, 'Example files');
+app.use(express.static(staticPath));
+
+// Example search data directly in server
+const searchData = [
   { title: "Apple", description: "A juicy fruit" },
   { title: "Banana", description: "Yellow and sweet" },
+  { title: "Orange", description: "Citrus fruit with vitamin C" },
+  { title: "Grapes", description: "Small sweet fruits" }
 ];
 
-// Search for a query
-const results = searchAlgoritm("apple", dataList);
+// API: performs server-side search
+app.get('/api/search', (req, res) => {
+  const query = req.query.q || "";
+  const results = searchAlgoritm(query, searchData);
+  res.json({ query, results });
+});
 
-console.log(results);
-// Returns matched items sorted by relevance score
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
 ```
+
+✅ Fast setup, simple for small datasets.
+
+---
+
+## Node.js Usage (Server-side) — JSON Data
+
+### `data.json`
+```json
+[
+  { "title": "Apple", "description": "A juicy fruit" },
+  { "title": "Banana", "description": "Yellow and sweet" },
+  { "title": "Orange", "description": "Citrus fruit with vitamin C" },
+  { "title": "Grapes", "description": "Small sweet fruits" }
+]
+```
+
+### `server.js`
+```js
+const express = require('express');
+const path = require('path');
+const fs = require('fs');
+const { searchAlgoritm } = require('search-algoritm');
+
+const app = express();
+const PORT = 3000;
+
+// Serve static files
+const staticPath = path.join(__dirname, 'Example files');
+app.use(express.static(staticPath));
+
+// Load search data from JSON file
+const dataPath = path.join(__dirname, 'data.json');
+let searchData = [];
+try {
+  const rawData = fs.readFileSync(dataPath, 'utf-8');
+  searchData = JSON.parse(rawData);
+} catch (err) {
+  console.error('Error reading JSON file:', err);
+}
+
+// API: performs server-side search
+app.get('/api/search', (req, res) => {
+  const query = req.query.q || "";
+  const results = searchAlgoritm(query, searchData);
+  res.json({ query, results });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
+```
+
+✅ Flexible for larger datasets; update JSON without touching server code.
 
 ---
 
 ## Frontend Usage (Browser)
 
-> Important: The browser cannot import directly from a package name in `node_modules` unless you use a bundler.
-> If **not using a bundler**, import via a **relative path** to the ESM file.
+> Important: The frontend fetches search results from the server.
+> You do **not** import the NPM package directly in the browser.
 
-### Folder structure
-
+### `ip-adress.js`
+```js
+// Example backend IP
+const backendIP = 'http://localhost:3000';
+export default backendIP;
 ```
-project/
-├─ index.html
-├─ css/
-│  └─ style.css
-├─ js/
-│  ├─ search.js
-│  ├─ ip-adress.js
-│  └─ node_modules/
-│      └─ SearchAlgoritm/src/searchAlgoritm.js
+
+### `search.js`
+```js
+import backendIP from './ip-adress.js';
+
+async function initSearch() {
+  const searchInput = document.getElementById('searchInput');
+  const searchBtn = document.getElementById('searchBtn');
+  const resultsList = document.getElementById('searchResults');
+
+  async function performSearch() {
+    const query = searchInput.value.trim();
+    if (!query) {
+      resultsList.innerHTML = `<li class="no-result">Please enter a search term</li>`;
+      return;
+    }
+
+    try {
+      const res = await fetch(`${backendIP}/api/search?q=${encodeURIComponent(query)}`);
+      const { results } = await res.json();
+
+      resultsList.innerHTML = results.length
+        ? results.map(item => `
+            <li class="result-item">
+              <strong>${item.title}</strong><br>
+              <span>${item.description}</span>
+            </li>
+          `).join('')
+        : `<li class="no-result">No matches found</li>`;
+    } catch (err) {
+      console.error('Error fetching search results:', err);
+      resultsList.innerHTML = `<li class="no-result">Could not fetch results</li>`;
+    }
+  }
+
+  searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') performSearch(); });
+  searchBtn.addEventListener('click', performSearch);
+}
+
+initSearch();
 ```
 
 ---
 
-### `index.html`
+## Example HTML
 
 ```html
 <!DOCTYPE html>
@@ -70,10 +174,9 @@ project/
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Search Example</title>
-  <link rel="stylesheet" href="./css/style.css">
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-
   <div class="page-wrapper">
     <div class="search-wrapper">
       <input type="text" id="searchInput" class="search-input" placeholder="Search...">
@@ -82,13 +185,14 @@ project/
     <ul id="searchResults" class="search-results"></ul>
   </div>
 
-  <script type="module" src="./js/search.js"></script>
+  <script type="module" src="./search.js"></script>
 </body>
 </html>
 ```
+
 ---
 
-### `css/style.css`
+## Style (`style.css`)
 
 ```css
 body {
@@ -151,95 +255,10 @@ body {
 
 ---
 
-### `js/ip-adress.js`
+## License
 
-```js
-// Backend IP address for API requests
-const backendIP = 'http://localhost:3000';
-export default backendIP;
-```
+MIT
 
 ---
 
-### `js/search.js`
-
-```js
-// Import the ESM version of searchAlgoritm from node_modules
-import { searchAlgoritm } from '../node_modules/SearchAlgoritm/src/searchAlgoritm.js';
-import backendIP from './ip-adress.js';
-
-// Main function that initializes the search feature
-async function initSearch() {
-  try {
-    // Fetch search data from the backend
-    const res = await fetch(`${backendIP}/api/search`);
-    const searchData = await res.json(); // array of objects with title/description
-
-    // Get references to HTML elements
-    const searchInput = document.getElementById('searchInput');   
-    const searchBtn = document.getElementById('searchBtn');       
-    const resultsList = document.getElementById('searchResults'); 
-
-    // Function that runs every time the user performs a search
-    function performSearch() {
-      const query = searchInput.value; 
-      const matches = searchAlgoritm(query, Object.values(searchData));
-
-      resultsList.innerHTML = matches.length
-        ? matches.map(item => `
-            <li class="result-item">
-              <strong>${item.title || ''}</strong><br>
-              <span>${item.description || ''}</span>
-            </li>
-          `).join('')
-        : `<li class="no-result">No results found</li>`; 
-    }
-
-    searchInput.addEventListener('keydown', e => { if(e.key === 'Enter') performSearch(); });
-    searchBtn.addEventListener('click', performSearch);
-
-  } catch (err) {
-    console.error("Error fetching search data:", err);
-    const resultsList = document.getElementById('searchResults');
-    resultsList.innerHTML = `<li class="no-result">Failed to load data</li>`;
-  }
-}
-
-initSearch();
-```
-
----
-
-### `server.js`
-
-```js
-import express from 'express';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const app = express();
-const PORT = 3000;
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Serve static files from "Example files" folder
-app.use(express.static(path.join(__dirname, 'Example files')));
-
-// Example search data
-const searchData = [
-  { title: "Apple", description: "A juicy fruit" },
-  { title: "Banana", description: "Yellow and sweet" },
-  { title: "Orange", description: "Citrus fruit with vitamin C" },
-  { title: "Grapes", description: "Small sweet fruits" }
-];
-
-// API endpoint
-app.get('/api/search', (req, res) => {
-  res.json(searchData);
-});
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
-```
+**Made by [Felix Lind](https://github.com/FelixLind1)**
