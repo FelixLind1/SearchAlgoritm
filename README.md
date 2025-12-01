@@ -1,3 +1,4 @@
+````markdown
 # search-algoritm
 
 ![npm version](https://img.shields.io/npm/v/search-algoritm.svg)
@@ -6,7 +7,8 @@
 [![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-blue?logo=github)](https://github.com/FelixLind1/SearchAlgoritm)
 
 A simple Node.js library for **fuzzy searching** through arrays of objects.  
-It calculates relevance scores based on how well the query matches the `title` and `description` of each item.
+It calculates relevance scores based on how well the query matches the `title` and `description` of each item.  
+**Supports Levenshtein distance for fuzzy matching.**
 
 ---
 
@@ -14,115 +16,132 @@ It calculates relevance scores based on how well the query matches the `title` a
 
 ```bash
 npm install search-algoritm
-```
+````
 
 ---
 
-## Node.js Usage (Server-side) — In-Built Data
+## Node.js Usage (Server-side)
+
+This package supports **two server setups** depending on your data source:
+
+1. **Cached JSON Server** – loads JSON once into memory and optionally reloads on file changes (fast for frequent searches).
+2. **Dynamic JSON Server** – reads JSON from disk on every request (simpler but slower for large datasets).
+
+---
+
+### 1. Cached JSON Server (`server.js`)
 
 ```js
 const express = require('express');
 const path = require('path');
+const fs = require('fs').promises;
 const { searchAlgoritm } = require('search-algoritm');
 
 const app = express();
 const PORT = 3000;
-
-// Serve static files
-const staticPath = path.join(__dirname, 'Example files');
-app.use(express.static(staticPath));
-
-// Example search data directly in server
-const searchData = [
-  { title: "Apple", description: "A juicy fruit" },
-  { title: "Banana", description: "Yellow and sweet" },
-  { title: "Orange", description: "Citrus fruit with vitamin C" },
-  { title: "Grapes", description: "Small sweet fruits" }
-];
-
-// API: performs server-side search
-app.get('/api/search', (req, res) => {
-  const query = req.query.q || "";
-  const results = searchAlgoritm(query, searchData);
-  res.json({ query, results });
-});
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
-```
-
-✅ Fast setup, simple for small datasets.
-
----
-
-## Node.js Usage (Server-side) — JSON Data
-
-### `data.json`
-```json
-[
-  { "title": "Apple", "description": "A juicy fruit" },
-  { "title": "Banana", "description": "Yellow and sweet" },
-  { "title": "Orange", "description": "Citrus fruit with vitamin C" },
-  { "title": "Grapes", "description": "Small sweet fruits" }
-]
-```
-
-### `server.js`
-```js
-const express = require('express');
-const path = require('path');
-const fs = require('fs');
-const { searchAlgoritm } = require('search-algoritm');
-
-const app = express();
-const PORT = 3000;
-
-// Serve static files
-const staticPath = path.join(__dirname, 'Example files');
-app.use(express.static(staticPath));
-
-// Load search data from JSON file
 const dataPath = path.join(__dirname, 'data.json');
-let searchData = [];
-try {
-  const rawData = fs.readFileSync(dataPath, 'utf-8');
-  searchData = JSON.parse(rawData);
-} catch (err) {
-  console.error('Error reading JSON file:', err);
-}
 
-// API: performs server-side search
-app.get('/api/search', (req, res) => {
-  const query = req.query.q || "";
+let searchData = [];
+
+const loadData = async () => {
+  try {
+    const rawData = await fs.readFile(dataPath, 'utf-8');
+    searchData = JSON.parse(rawData);
+    console.log(`[server] Loaded ${searchData.length} items`);
+  } catch (err) {
+    console.error('[server] Failed to load data.json:', err);
+  }
+};
+
+loadData();
+fs.watchFile(dataPath, async () => {
+  console.log('[server] data.json changed, reloading cache...');
+  await loadData();
+});
+
+app.use(express.static(path.join(__dirname, 'Example files')));
+
+app.get('/api/search', async (req, res) => {
+  const query = (req.query.q || "").trim();
+  if (!query) return res.json({ query, results: [] });
+
   const results = searchAlgoritm(query, searchData);
   res.json({ query, results });
 });
 
-// Start server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
 ```
 
-✅ Flexible for larger datasets; update JSON without touching server code.
+✅ Fast searches using in-memory cache. Best for **medium to large datasets** where performance matters.
+
+---
+
+### 2. Dynamic JSON Server (`json-server.js`)
+
+```js
+const express = require('express');
+const path = require('path');
+const fs = require('fs').promises;
+const { searchAlgoritm } = require('search-algoritm');
+
+const app = express();
+const PORT = 3000;
+
+app.use(express.static(path.join(__dirname, 'Example files')));
+const dataPath = path.join(__dirname, 'data.json');
+
+const loadJson = async (filePath) => {
+  try {
+    const rawData = await fs.readFile(filePath, 'utf-8');
+    return JSON.parse(rawData);
+  } catch (err) {
+    console.error('Error reading JSON file:', err);
+    return [];
+  }
+};
+
+app.get('/api/search', async (req, res) => {
+  const query = req.query.q || "";
+  const searchData = await loadJson(dataPath);
+  const results = searchAlgoritm(query, searchData);
+  res.json({ query, results });
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
+```
+
+✅ Reads JSON on each request. Best for **small datasets** or when the data changes frequently and caching is not desired.
+
+---
+
+## Best Practices
+
+| Server Type  | Pros                                  | Cons                                                     | When to Use                                 |
+| ------------ | ------------------------------------- | -------------------------------------------------------- | ------------------------------------------- |
+| Cached JSON  | Fast searches, reduces disk I/O       | Slightly more memory usage, needs cache reload on change | Medium to large datasets, frequent searches |
+| Dynamic JSON | Always reads fresh data, simple setup | Slower for large datasets                                | Small datasets or frequently changing data  |
+
+**Tip:** For production with large datasets, use the **cached server**. For quick prototypes or dynamic content that changes often, use the **dynamic server**.
 
 ---
 
 ## Frontend Usage (Browser)
 
-> Important: The frontend fetches search results from the server.
-> You do **not** import the NPM package directly in the browser.
+> Always fetch search results from the server.
 
 ### `ip-adress.js`
+
 ```js
-// Example backend IP
 const backendIP = 'http://localhost:3000';
 export default backendIP;
 ```
 
 ### `search.js`
+
 ```js
 import backendIP from './ip-adress.js';
 
@@ -165,93 +184,9 @@ initSearch();
 
 ---
 
-## Example HTML
+## Example HTML & CSS
 
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Search Example</title>
-  <link rel="stylesheet" href="./style.css">
-</head>
-<body>
-  <div class="page-wrapper">
-    <div class="search-wrapper">
-      <input type="text" id="searchInput" class="search-input" placeholder="Search...">
-      <button id="searchBtn" class="search-btn">Search</button>
-    </div>
-    <ul id="searchResults" class="search-results"></ul>
-  </div>
-
-  <script type="module" src="./search.js"></script>
-</body>
-</html>
-```
-
----
-
-## Style (`style.css`)
-
-```css
-body {
-  font-family: Arial, sans-serif;
-  background: #0f0f0f;
-  color: #e4e4e4;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  margin: 0;
-}
-
-.page-wrapper {
-  max-width: 500px;
-  width: 100%;
-}
-
-.search-wrapper {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.search-input {
-  flex: 1;
-  padding: 10px;
-  border-radius: 6px;
-  border: 1px solid #444;
-  background: #1b1b1b;
-  color: #e6e6e6;
-}
-
-.search-btn {
-  padding: 10px 16px;
-  border: none;
-  border-radius: 6px;
-  background: #3b82f6;
-  color: white;
-  cursor: pointer;
-}
-
-.search-results {
-  list-style: none;
-  padding: 0;
-}
-
-.result-item {
-  padding: 10px;
-  background: #181818;
-  margin-bottom: 6px;
-  border-radius: 6px;
-}
-
-.no-result {
-  color: #f87171;
-  padding: 10px;
-}
-```
+See previous sections for **HTML structure** and **style.css**.
 
 ---
 
@@ -259,6 +194,6 @@ body {
 
 MIT
 
----
-
 **Made by [Felix Lind](https://github.com/FelixLind1)**
+
+```
